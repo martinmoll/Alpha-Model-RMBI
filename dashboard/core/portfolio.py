@@ -96,10 +96,12 @@ def _erc_weights(
         port_var = w @ cov @ w
         if port_var <= 0:
             return 1e10
-        port_vol = np.sqrt(port_var)
-        mc = cov @ w
-        rc = w * mc / port_vol
-        return np.sum((rc - rc.mean()) ** 2)
+        # Work with *relative* risk contributions, which sum to 1. The absolute
+        # contributions are ~1e-3 for monthly returns, so their squared spread
+        # lands below SLSQP's default ftol (1e-6) and the optimizer would stop
+        # on the first iteration and return the equal-weight starting point.
+        rel_rc = (w * (cov @ w)) / port_var
+        return np.sum((rel_rc - 1.0 / n) ** 2)
 
     w0 = np.ones(n) / n
     bounds = [(0.001, 1.0)] * n
@@ -178,6 +180,16 @@ def _get_cov_matrix(
     return np.eye(n) * 0.01
 
 
+def build_returns_history(panel: pd.DataFrame) -> pd.DataFrame:
+    """Monthly realized returns as a ym x permno frame, for covariance estimation.
+
+    Uses ``ret_1``, which is the return realized *over* month t and is therefore
+    known at the month-t decision point. Do not build this from ``y_raw`` — that
+    is the forward return and would be look-ahead.
+    """
+    return panel.pivot_table(index="ym", columns="permno", values="ret_1").sort_index()
+
+
 def build_portfolio_series(
     predictions: dict[str, pd.DataFrame],
     method: str = "equal_weight",
@@ -188,8 +200,15 @@ def build_portfolio_series(
     regime_lookback: int = 6,
     market_monthly: pd.DataFrame | None = None,
     returns_history: pd.DataFrame | None = None,
+    cost_bps: float = 10.0,
     **method_params,
 ) -> dict:
+    """Build the monthly return series for a strategy.
+
+    ``monthly_returns`` is **net of transaction costs** at ``cost_bps`` one-way.
+    The gross series is returned alongside it as ``monthly_returns_gross`` so
+    the two can be compared. Pass ``cost_bps=0.0`` for a frictionless run.
+    """
     regime_on = None
     if market_monthly is not None and regime_lookback > 0:
         trailing = market_monthly["spy_ret"].rolling(regime_lookback).sum().shift(1)
@@ -197,6 +216,7 @@ def build_portfolio_series(
 
     months = sorted(predictions.keys())
     monthly_returns: dict[str, float] = {}
+    gross_returns: dict[str, float] = {}
     holdings: dict[str, pd.DataFrame] = {}
     ic_vals: dict[str, float] = {}
     turnover_vals: dict[str, float] = {}
@@ -225,10 +245,17 @@ def build_portfolio_series(
             else:
                 mvo_prev = None
 
+        # Point-in-time slice: at month m only returns realized up to and
+        # including m are known. ret_1[m] is the return over month m, so it is
+        # available at the month-end decision point; anything after m is not.
+        hist_m = None
+        if returns_history is not None:
+            hist_m = returns_history.loc[returns_history.index <= m]
+
         held = construct_portfolio(
             df_m, method=method, K=K, strategy_type=strategy_type,
             K_short=K_short, vol_tilt=vol_tilt,
-            returns_history=returns_history,
+            returns_history=hist_m,
             prev_weights=mvo_prev, **method_params,
         )
 
@@ -237,7 +264,6 @@ def build_portfolio_series(
         if regime_on is not None and m in regime_on.index and not regime_on[m]:
             port_ret = 0.0
 
-        monthly_returns[m] = port_ret
         holdings[m] = held
 
         curr_weights = pd.Series(0.0, index=df_m["permno"].values)
@@ -246,15 +272,26 @@ def build_portfolio_series(
 
         if prev_weights is not None:
             aligned_c, aligned_p = curr_weights.align(prev_weights, fill_value=0.0)
-            turnover_vals[m] = 0.5 * (aligned_c - aligned_p).abs().sum()
+            traded = 0.5 * (aligned_c - aligned_p).abs().sum()
+            turnover_vals[m] = traded
         else:
+            # First month builds the whole book from cash, so it is a full
+            # one-way turnover. Reported as NaN (there is no prior month to
+            # compare against) but it still costs money to trade.
+            traded = 1.0
             turnover_vals[m] = np.nan
+
+        # Turnover is 0.5*sum|dw|, so doubling recovers the notional traded.
+        gross_returns[m] = port_ret
+        monthly_returns[m] = port_ret - traded * cost_bps / 10_000 * 2
 
         prev_weights = curr_weights
 
     return {
         "monthly_returns": pd.Series(monthly_returns).sort_index(),
+        "monthly_returns_gross": pd.Series(gross_returns).sort_index(),
         "holdings": holdings,
         "ic": pd.Series(ic_vals).sort_index(),
         "turnover": pd.Series(turnover_vals).sort_index(),
+        "cost_bps": cost_bps,
     }

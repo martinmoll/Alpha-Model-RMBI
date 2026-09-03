@@ -108,7 +108,18 @@ all_months = sorted(df["ym"].unique())
 oos_candidates = [m for m in all_months if m >= "2010-01"]
 
 with wf_col1:
-    oos_start = st.selectbox("OOS Start", oos_candidates, index=oos_candidates.index("2015-01") if "2015-01" in oos_candidates else 0)
+    # Default 2016-07: the panel jumps from 89 names to 468 that month. Before
+    # it, the universe is only the handful of today's constituents with price
+    # history that far back, so earlier start dates are severely survivorship-
+    # biased even by this dataset's standards.
+    _default_oos = "2016-07" if "2016-07" in oos_candidates else oos_candidates[0]
+    oos_start = st.selectbox("OOS Start", oos_candidates,
+                             index=oos_candidates.index(_default_oos))
+    if oos_start < "2016-07":
+        st.caption(
+            ":warning: Before 2016-07 the universe is under 90 names — today's "
+            "survivors only. Results from that window are not credible."
+        )
 with wf_col2:
     retrain_freq = st.selectbox("Retrain Every (months)", [6, 12, 24], index=1)
 with wf_col3:
@@ -144,9 +155,18 @@ construction_method = st.selectbox(
     ["equal_weight", "score_weight", "inverse_vol", "erc", "mvo"],
 )
 
+cost_bps = st.slider(
+    "Transaction cost (bps, one way)", min_value=0, max_value=50, value=10, step=5,
+    help="Charged against realized returns every month, on the notional traded. "
+         "Set to 0 for a frictionless (unrealistic) run.",
+)
+
+# Separate knob: MVO can also penalize turnover *inside* the optimizer, which
+# is a different thing from charging the realized cost above.
 tc_bps = 0.0
 if construction_method == "mvo":
-    tc_bps = st.slider("Transaction cost (bps)", min_value=0, max_value=50, value=10, step=5)
+    tc_bps = st.slider("MVO turnover penalty (bps)", min_value=0, max_value=50,
+                       value=10, step=5)
 
 # --- Action Buttons ---
 btn_col1, btn_col2 = st.columns(2)
@@ -190,6 +210,7 @@ if run_clicked:
     port_key = cache.portfolio_key(
         pred_key, K, vol_tilt, regime_lookback,
         strategy_key, K_short, construction_method, tc_bps=tc_bps,
+        cost_bps=cost_bps,
     )
     portfolio = cache.get_portfolio(port_key)
 
@@ -199,6 +220,8 @@ if run_clicked:
             K=K, strategy_type=strategy_key, K_short=K_short,
             vol_tilt=vol_tilt, regime_lookback=regime_lookback,
             market_monthly=market_monthly, tc_bps=tc_bps,
+            returns_history=st.session_state.get("returns_history"),
+            cost_bps=cost_bps,
         )
         cache.save_portfolio(port_key, portfolio)
 
@@ -211,6 +234,7 @@ if run_clicked:
         "strategy_type": strategy_key, "construction_method": construction_method,
         "features": available_features, "window_type": window_type,
         "oos_start": oos_start, "rolling_window": rolling_window,
+        "cost_bps": cost_bps,
     }
     st.success("Backtest complete!")
     render_next_steps("model")

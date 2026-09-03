@@ -486,3 +486,35 @@ def signal_staleness(
         "below_threshold": below,
         "stale": stale,
     })
+
+
+def survivorship_premium(
+    panel: pd.DataFrame, start: str | None = None,
+) -> dict:
+    """Return earned by simply holding every name in the panel, vs the market.
+
+    The universe is *today's* index constituents projected backwards, so the
+    panel never contains the companies that were dropped, acquired or went
+    bankrupt. Holding all of them earns a return no investor could have earned
+    at the time, because the losers were never on the list to pick from.
+
+    The gap this reports is a **floor** on the bias, not a point estimate. It
+    understates the true effect, because the surviving names also dominate the
+    training data.
+    """
+    df = panel if start is None else panel[panel["ym"] >= start]
+    uni = df.groupby("ym")["y_raw"].mean().dropna()
+    if len(uni) < 12 or "spy_ret" not in df.columns:
+        return {}
+    bench = df.groupby("ym")["spy_ret"].first().reindex(uni.index).dropna()
+    uni = uni.reindex(bench.index)
+
+    counts = df.groupby("ym").size()
+    return {
+        "panel_ann": float(uni.mean() * 12),
+        "bench_ann": float(bench.mean() * 12),
+        "gap_ann": float((uni.mean() - bench.mean()) * 12),
+        "n_months": int(len(uni)),
+        "names_first": int(counts.iloc[0]),
+        "names_last": int(counts.iloc[-1]),
+    }

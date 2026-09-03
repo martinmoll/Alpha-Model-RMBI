@@ -81,6 +81,7 @@ for m in selected_methods:
         K=params["K"], strategy_type=params["strategy_type"],
         K_short=params["K_short"], vol_tilt=params["vol_tilt"],
         regime_lookback=params["regime_lookback"], market_monthly=market,
+        returns_history=st.session_state.get("returns_history"),
     )
     method_results[m] = port
 
@@ -338,9 +339,13 @@ with tab_costs:
         st.plotly_chart(fig, use_container_width=True)
     with tc_col2:
         cost_bps = st.number_input("Cost per trade (bps)", value=10.0, step=5.0, key="tc_bps_port")
-        ann_vol = result["monthly_returns"].std() * np.sqrt(12)
+        # Base this on the GROSS series. result["monthly_returns"] is already
+        # net of the backtest's own cost assumption, so using it here would
+        # charge the book twice.
+        _gross = result.get("monthly_returns_gross", result["monthly_returns"])
+        ann_vol = _gross.std() * np.sqrt(12)
         tc = transaction_cost_drag(result["turnover"], cost_bps, ann_vol)
-        perf_cost = compute_performance_metrics(result["monthly_returns"])
+        perf_cost = compute_performance_metrics(_gross)
         gross_sr = perf_cost["SR"]
         net_sr = gross_sr - tc["Cost_SR"]
         metric_card_row([

@@ -297,3 +297,26 @@ def test_latest_month_staleness_flags_newly_sparse():
     assert "fresh" not in res["newly_stale"]       # still populated
     assert "always_sparse" not in res["newly_stale"]  # sparse in both -> not new
     assert res["n_features"] == 3
+
+
+def test_survivorship_premium_measures_the_gap():
+    """Panel beats the benchmark by a known amount; the helper must recover it."""
+    from core.diagnostics import survivorship_premium
+    months = [f"2015-{m:02d}" for m in range(1, 13)] + [f"2016-{m:02d}" for m in range(1, 13)]
+    rows = []
+    for m in months:
+        for p in range(5):
+            rows.append({"ym": m, "permno": p, "y_raw": 0.02, "spy_ret": 0.01})
+    out = survivorship_premium(pd.DataFrame(rows))
+    assert out["n_months"] == 24
+    np.testing.assert_almost_equal(out["panel_ann"], 0.24, decimal=6)
+    np.testing.assert_almost_equal(out["bench_ann"], 0.12, decimal=6)
+    np.testing.assert_almost_equal(out["gap_ann"], 0.12, decimal=6)
+    assert out["names_first"] == 5
+
+
+def test_survivorship_premium_needs_enough_months():
+    from core.diagnostics import survivorship_premium
+    short = pd.DataFrame({"ym": ["2015-01"] * 5, "permno": range(5),
+                          "y_raw": [0.02] * 5, "spy_ret": [0.01] * 5})
+    assert survivorship_premium(short) == {}

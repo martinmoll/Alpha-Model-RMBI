@@ -24,6 +24,15 @@ data the free sources can't fully provide.
   (net Sharpe vs AUM), replacing the flat-bps assumption. README named
   Almgren–Chriss as the missing piece. *Core + Costs-tab panel added.*
 - [ ] **Point-in-time universe + delisting returns (survivorship).** *(data-limited)*
+  **:rotating_light: NOW THE TOP PRIORITY — measured 2026-09-03.** The strategy
+  earns ~5x more than its own IC can justify (mean IC 0.028 supports ~7.6%/yr of
+  selection; it delivers ~40%/yr), with beta −0.41 and R² 0.02, so none of it is
+  market exposure. The held book sits at `ivol_xs` +2.60 and `vol_12m_xs` +2.49 —
+  it concentrates in the extreme-volatility tail, which is exactly where the
+  survivor filter distorts the universe most. Every high-vol name that went to
+  zero is absent. **No backtest number here is usable for real money until this
+  is fixed.** Full write-up in
+  `docs/superpowers/plans/2026-09-02-feature-repair-and-european-expansion-plan.md`.
   The #1 documented limitation: the universe is *today's* constituents, so the
   backtest holds survivors. A full fix needs point-in-time index membership and
   delisting returns (CRSP-style). Free-data steps: (a) handle delisting returns

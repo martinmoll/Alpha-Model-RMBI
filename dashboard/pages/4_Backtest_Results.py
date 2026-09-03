@@ -8,7 +8,7 @@ from core.diagnostics import (
     compute_performance_metrics, compute_ic_stats, fundamental_law, feature_ic,
     compute_r2_oos, bootstrap_sharpe_ci, bootstrap_alpha_ci, multiple_testing_hurdle,
     probabilistic_sharpe_ratio, deflated_sharpe_ratio,
-    probability_of_backtest_overfitting,
+    probability_of_backtest_overfitting, survivorship_premium,
 )
 from core.risk import factor_alpha
 from components.charts import (
@@ -93,6 +93,38 @@ with head_right:
         pin_clicked = st.button("Pin to compare", type="primary")
 
 render_workflow_status("results")
+
+# --- Survivorship warning -------------------------------------------------
+# The universe is today's index constituents projected backwards, so every
+# number on this page is measured on a book that could not have been held at
+# the time. Show the size of that head start before any performance figure.
+_panel = st.session_state.get("df")
+_oos = st.session_state.get("backtest_params", {}).get("oos_start")
+if _panel is not None:
+    _surv = survivorship_premium(_panel, start=_oos)
+    if _surv:
+        banner(
+            "warning",
+            f"<b>Survivorship bias: +{_surv['gap_ann']:.1%} per year.</b> "
+            f"Holding <i>every</i> name in this universe returned "
+            f"{_surv['panel_ann']:.1%}/yr against a benchmark of "
+            f"{_surv['bench_ann']:.1%}/yr, before any model. "
+            f"Universe: {_surv['names_first']} names at the start, "
+            f"{_surv['names_last']} at the end.",
+            detail=(
+                "The universe is **today's** index constituents projected "
+                "backwards. Companies that were dropped, acquired or went "
+                "bankrupt are absent, so the backtest picks only from names "
+                "that survived. No investor could have held this list at the "
+                "time.\n\n"
+                "Treat the gap above as a **floor**, not a point estimate. It "
+                "understates the true effect, because the same surviving names "
+                "also dominate the training data. Subtract it from any Sharpe "
+                "or return figure on this page before you act on it.\n\n"
+                "Fixing this properly needs point-in-time index membership and "
+                "delisting returns — see `ROADMAP.md` Tier 1."
+            ),
+        )
 
 active = configs[active_idx]
 active_result = active["result"]

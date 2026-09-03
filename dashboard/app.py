@@ -7,6 +7,7 @@ from core.data_loader import (
     load_dataset, compute_market_monthly, load_ff5_factors,
     available_datasets, region_for_label,
 )
+from core.portfolio import build_returns_history
 from components.workflow import render_workflow_status
 from components.theme import inject_theme, COLORS, FONT_MONO, FONT_SANS
 
@@ -75,6 +76,9 @@ if st.session_state.get("_loaded_region_label") != region_label:
 st.session_state.df = df
 st.session_state.market_monthly = market_monthly
 st.session_state.ff5_factors = ff5_factors
+# Realized-return panel for covariance estimation in ERC/MVO. Sliced to a
+# point-in-time window per month inside build_portfolio_series.
+st.session_state.returns_history = build_returns_history(df)
 st.session_state.setdefault("backtest_result", None)
 st.session_state.setdefault("backtest_params", None)
 st.session_state.setdefault("pinned_configs", [])

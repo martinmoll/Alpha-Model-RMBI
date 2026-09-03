@@ -55,8 +55,13 @@ def prediction_key(model_type, model_params, retrain_every, feature_cols=None, w
     })
 
 
-def portfolio_key(pred_key, K, vol_tilt, regime_lookback, strategy_type="long_only", K_short=10, construction_method="equal_weight", tc_bps=0.0):
+def portfolio_key(pred_key, K, vol_tilt, regime_lookback, strategy_type="long_only", K_short=10, construction_method="equal_weight", tc_bps=0.0, cost_bps=10.0):
     return _make_key({
+        # Bump when weight construction changes in a way the other key fields
+        # cannot express. v2: ERC/MVO now receive a real point-in-time
+        # covariance (previously always the identity) and the ERC objective is
+        # scaled so it actually optimizes. Entries cached before that are wrong.
+        'construction_version': 2,
         'pred_key': pred_key,
         'K': K,
         'vol_tilt': vol_tilt,
@@ -65,6 +70,7 @@ def portfolio_key(pred_key, K, vol_tilt, regime_lookback, strategy_type="long_on
         'K_short': K_short,
         'construction_method': construction_method,
         'tc_bps': tc_bps,
+        'cost_bps': cost_bps,
     })
 
 
