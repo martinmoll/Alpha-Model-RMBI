@@ -9,6 +9,7 @@ from core.diagnostics import (
     compute_r2_oos, bootstrap_sharpe_ci, bootstrap_alpha_ci, multiple_testing_hurdle,
     probabilistic_sharpe_ratio, deflated_sharpe_ratio,
     probability_of_backtest_overfitting, survivorship_premium,
+    return_by_vol_decile,
 )
 from core.risk import factor_alpha
 from components.charts import (
@@ -125,6 +126,36 @@ if _panel is not None:
                 "delisting returns — see `ROADMAP.md` Tier 1."
             ),
         )
+
+        with st.expander("Where the bias lives: return by volatility decile"):
+            _dec = return_by_vol_decile(
+                _panel,
+                holdings=(result or {}).get("holdings"),
+                start=_oos,
+            )
+            if not _dec.empty:
+                st.caption(
+                    "Deciles are formed within each month, so the split itself "
+                    "carries no look-ahead. In a point-in-time universe the "
+                    "highest-volatility decile should **not** reliably "
+                    "outperform — those are the names that blow up, and the "
+                    "ones that did are missing here. A large positive spread "
+                    "is measuring the survivor filter, not a risk premium."
+                )
+                _show = _dec.copy()
+                _show["ann_return"] = (_show["ann_return"] * 100).round(1)
+                if "share_of_book" in _show.columns:
+                    _show["share_of_book"] = (_show["share_of_book"] * 100).round(1)
+                st.dataframe(
+                    _show.rename(columns={
+                        "ann_return": "Universe return %/yr",
+                        "n_obs": "Observations",
+                        "share_of_book": "Share of book %",
+                    }),
+                    use_container_width=True,
+                )
+                _spread = (_dec["ann_return"].iloc[-1] - _dec["ann_return"].iloc[0]) * 100
+                st.caption(f"Top decile minus bottom: **{_spread:.1f}** pct pts/yr.")
 
 active = configs[active_idx]
 active_result = active["result"]

@@ -95,8 +95,12 @@ def run_walk_forward(
         keep = ["permno", "pred", EVAL_TARGET]
         if "sector" in test.columns:
             keep.insert(1, "sector")
-        if "vol_12m_xs" in test.columns:
-            keep.append("vol_12m_xs")
+        for col in ("vol_12m_xs", "ivol_xs"):
+            # ivol_xs is carried so portfolio construction can cap idiosyncratic
+            # volatility. The model concentrates the book at ivol_xs ~ +2.6,
+            # which is where a survivor-only universe is most distorted.
+            if col in test.columns:
+                keep.append(col)
 
         predictions[m] = test[keep].reset_index(drop=True)
 

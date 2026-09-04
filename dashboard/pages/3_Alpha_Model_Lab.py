@@ -155,6 +155,16 @@ construction_method = st.selectbox(
     ["equal_weight", "score_weight", "inverse_vol", "erc", "mvo"],
 )
 
+cap_on = st.checkbox(
+    "Cap idiosyncratic volatility (recommended)", value=True,
+    help="Without a cap the model puts ~91% of the book in the top two "
+         "volatility deciles, where the survivor-only universe is most "
+         "distorted. Capping barely moves the Sharpe but roughly halves the "
+         "return and the drawdown.",
+)
+max_ivol_xs = st.slider("Max ivol (cross-sectional z)", min_value=-1.0,
+                        max_value=3.0, value=1.0, step=0.5) if cap_on else None
+
 cost_bps = st.slider(
     "Transaction cost (bps, one way)", min_value=0, max_value=50, value=10, step=5,
     help="Charged against realized returns every month, on the notional traded. "
@@ -210,7 +220,7 @@ if run_clicked:
     port_key = cache.portfolio_key(
         pred_key, K, vol_tilt, regime_lookback,
         strategy_key, K_short, construction_method, tc_bps=tc_bps,
-        cost_bps=cost_bps,
+        cost_bps=cost_bps, max_ivol_xs=max_ivol_xs,
     )
     portfolio = cache.get_portfolio(port_key)
 
@@ -221,7 +231,7 @@ if run_clicked:
             vol_tilt=vol_tilt, regime_lookback=regime_lookback,
             market_monthly=market_monthly, tc_bps=tc_bps,
             returns_history=st.session_state.get("returns_history"),
-            cost_bps=cost_bps,
+            cost_bps=cost_bps, max_ivol_xs=max_ivol_xs,
         )
         cache.save_portfolio(port_key, portfolio)
 
@@ -234,7 +244,7 @@ if run_clicked:
         "strategy_type": strategy_key, "construction_method": construction_method,
         "features": available_features, "window_type": window_type,
         "oos_start": oos_start, "rolling_window": rolling_window,
-        "cost_bps": cost_bps,
+        "cost_bps": cost_bps, "max_ivol_xs": max_ivol_xs,
     }
     st.success("Backtest complete!")
     render_next_steps("model")

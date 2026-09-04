@@ -9,6 +9,23 @@ from scipy.stats import spearmanr
 EVAL_TARGET = "y_raw"
 
 
+def _apply_ivol_cap(df: pd.DataFrame, max_ivol_xs: float | None) -> pd.DataFrame:
+    """Drop names whose idiosyncratic volatility exceeds the cap.
+
+    The model concentrates the book around ``ivol_xs`` +2.6 — the extreme tail
+    of the cross-section, and precisely where a survivor-only universe is most
+    distorted, because every high-volatility name that went to zero is missing.
+    This cap keeps the strategy out of that tail. It is a stopgap: it makes the
+    backtest less wrong, not right. The fix is a point-in-time universe.
+
+    Names with no ``ivol_xs`` are kept. Excluding them would shrink the universe
+    on the basis of missing data, which is a different selection effect.
+    """
+    if max_ivol_xs is None or "ivol_xs" not in df.columns:
+        return df
+    return df[~(df["ivol_xs"] > max_ivol_xs)]
+
+
 def construct_portfolio(
     predictions: pd.DataFrame,
     method: str,
@@ -17,9 +34,10 @@ def construct_portfolio(
     K_short: int,
     vol_tilt: float,
     returns_history: pd.DataFrame | None = None,
+    max_ivol_xs: float | None = None,
     **method_params,
 ) -> pd.DataFrame:
-    df = predictions.copy()
+    df = _apply_ivol_cap(predictions, max_ivol_xs).copy()
 
     if vol_tilt > 0.0 and "vol_12m_xs" in df.columns:
         df["pred"] = df["pred"] - vol_tilt * df["vol_12m_xs"].fillna(0.0)
@@ -201,6 +219,7 @@ def build_portfolio_series(
     market_monthly: pd.DataFrame | None = None,
     returns_history: pd.DataFrame | None = None,
     cost_bps: float = 10.0,
+    max_ivol_xs: float | None = None,
     **method_params,
 ) -> dict:
     """Build the monthly return series for a strategy.
@@ -223,7 +242,8 @@ def build_portfolio_series(
     prev_weights: pd.Series | None = None
 
     for m in months:
-        df_m = predictions[m]
+        # Cap first, so the breadth check below sees the tradable universe.
+        df_m = _apply_ivol_cap(predictions[m], max_ivol_xs)
         min_required = K + K_short if strategy_type == "long_short" else 2 * K
         if len(df_m) < min_required:
             prev_weights = None

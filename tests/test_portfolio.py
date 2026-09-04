@@ -230,3 +230,59 @@ def test_first_month_is_charged_a_full_build():
     m0 = months[0]
     drag = out["monthly_returns_gross"][m0] - out["monthly_returns"][m0]
     np.testing.assert_almost_equal(drag, 1.0 * 10.0 / 10_000 * 2, decimal=10)
+
+
+# --- idiosyncratic volatility cap ------------------------------------------
+# The model concentrates the book at ivol_xs ~ +2.6, which is exactly where a
+# survivor-only universe is most distorted. The cap is a stopgap that keeps the
+# strategy out of that tail until the universe is point-in-time.
+
+def _ivol_month(n=60):
+    rng = np.random.default_rng(3)
+    return pd.DataFrame({
+        "permno": range(10001, 10001 + n),
+        # Highest predictions land on the highest-ivol names, mimicking the
+        # real model, so an uncapped run must pick them.
+        "pred": np.linspace(-1, 1, n),
+        "y_raw": rng.normal(0, 0.08, n),
+        "vol_12m_xs": np.linspace(-2, 3, n),
+        "ivol_xs": np.linspace(-2, 3, n),
+    })
+
+
+def test_ivol_cap_excludes_the_tail():
+    from core.portfolio import construct_portfolio
+    df = _ivol_month()
+    uncapped = construct_portfolio(df, method="equal_weight", K=10,
+                                   strategy_type="long_only", K_short=10, vol_tilt=0.0)
+    capped = construct_portfolio(df, method="equal_weight", K=10,
+                                 strategy_type="long_only", K_short=10, vol_tilt=0.0,
+                                 max_ivol_xs=1.0)
+    assert uncapped["ivol_xs"].max() > 1.0, "fixture should tempt the model into the tail"
+    assert capped["ivol_xs"].max() <= 1.0
+    assert capped["ivol_xs"].mean() < uncapped["ivol_xs"].mean()
+    np.testing.assert_almost_equal(capped["weight"].sum(), 1.0, decimal=6)
+
+
+def test_ivol_cap_keeps_names_with_no_ivol():
+    """A missing ivol must not silently shrink the universe."""
+    from core.portfolio import construct_portfolio
+    df = _ivol_month()
+    df.loc[df.index[-5:], "ivol_xs"] = np.nan
+    capped = construct_portfolio(df, method="equal_weight", K=10,
+                                 strategy_type="long_only", K_short=10, vol_tilt=0.0,
+                                 max_ivol_xs=0.0)
+    assert capped["ivol_xs"].isna().any()
+
+
+def test_ivol_cap_flows_through_the_series_builder():
+    months, permnos, preds = _series_inputs()
+    rng = np.random.default_rng(4)
+    for m in preds:
+        preds[m]["ivol_xs"] = rng.uniform(-2, 3, len(preds[m]))
+    out = build_portfolio_series(
+        predictions=preds, method="equal_weight", K=10, strategy_type="long_only",
+        K_short=10, vol_tilt=0.0, regime_lookback=0, max_ivol_xs=1.0, cost_bps=0.0,
+    )
+    for m, held in out["holdings"].items():
+        assert held["ivol_xs"].max() <= 1.0, f"{m} breached the cap"

@@ -518,3 +518,55 @@ def survivorship_premium(
         "names_first": int(counts.iloc[0]),
         "names_last": int(counts.iloc[-1]),
     }
+
+
+def return_by_vol_decile(
+    panel: pd.DataFrame,
+    holdings: dict[str, pd.DataFrame] | None = None,
+    vol_col: str = "vol_12m_xs",
+    start: str | None = None,
+) -> pd.DataFrame:
+    """Universe forward return by volatility decile, and where the book sits.
+
+    This is the survivorship signature. In a point-in-time universe the highest
+    volatility decile should **not** reliably outperform: those are the names
+    that blow up, and the ones that did are missing here. A top decile that
+    beats the bottom by a wide margin is measuring the survivor filter, not a
+    volatility premium.
+
+    Deciles are formed within each month, so the split is cross-sectional and
+    carries no look-ahead.
+    """
+    df = panel if start is None else panel[panel["ym"] >= start]
+    df = df[[c for c in ("ym", "permno", vol_col, "y_raw") if c in df.columns]].dropna()
+    if len(df) < 100 or vol_col not in df.columns:
+        return pd.DataFrame()
+
+    df = df.copy()
+    df["decile"] = df.groupby("ym")[vol_col].transform(
+        lambda x: pd.qcut(x.rank(method="first"), 10, labels=False, duplicates="drop")
+        if len(x) >= 10 else np.nan
+    )
+    df = df.dropna(subset=["decile"])
+
+    out = df.groupby("decile").agg(
+        ann_return=("y_raw", lambda s: s.mean() * 12),
+        n_obs=("y_raw", "size"),
+    )
+    out.index = out.index.astype(int) + 1
+    out.index.name = "vol_decile"
+
+    if holdings:
+        held = pd.concat(
+            [h[["permno"]].assign(ym=m) for m, h in holdings.items()],
+            ignore_index=True,
+        )
+        lookup = df.set_index(["ym", "permno"])["decile"]
+        held["decile"] = lookup.reindex(
+            pd.MultiIndex.from_arrays([held["ym"], held["permno"]])
+        ).values
+        counts = held["decile"].value_counts(normalize=True)
+        counts.index = counts.index.astype(int) + 1
+        out["share_of_book"] = counts.reindex(out.index).fillna(0.0)
+
+    return out

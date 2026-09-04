@@ -1,10 +1,10 @@
 # Alpha Strategy Dashboard
 
-An end-to-end quantitative equity research platform that implements the full alpha signal pipeline: data ingestion, feature engineering, walk-forward model training, portfolio construction, risk decomposition, and live monitoring. Built as a Streamlit dashboard for interactive experimentation and visual diagnostics.
+An end-to-end quantitative equity research platform that implements the full   pipeline: data ingestion, feature engineering, walk-forward model training, portfolio construction, risk decomposition, and live monitoring. Built as a Streamlit dashboard for interactive experimentation and visual diagnostics.
 
 ## Motivation
 
-Most academic backtesting examples stop at "train a model, compute Sharpe." This project goes further by asking the questions a real portfolio manager would ask:
+A lot of the academic backtesting examples I saw just stopped at "train a model, compute Sharpe." I wanted to to see if I could take this further:
 
 - **Is the Sharpe statistically significant?** Bootstrap confidence intervals quantify estimation uncertainty instead of reporting a single point estimate.
 - **Where do the returns come from?** Fama-French 5-factor regressions separate genuine stock-selection alpha from repackaged factor exposures.

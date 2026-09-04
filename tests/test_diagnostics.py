@@ -320,3 +320,32 @@ def test_survivorship_premium_needs_enough_months():
     short = pd.DataFrame({"ym": ["2015-01"] * 5, "permno": range(5),
                           "y_raw": [0.02] * 5, "spy_ret": [0.01] * 5})
     assert survivorship_premium(short) == {}
+
+
+def test_return_by_vol_decile_orders_and_locates_the_book():
+    """High-vol decile is built to outperform; the book is built to sit in it."""
+    from core.diagnostics import return_by_vol_decile
+    rng = np.random.default_rng(11)
+    months = [f"2016-{m:02d}" for m in range(1, 13)]
+    rows = []
+    for m in months:
+        for p in range(100):
+            vol = (p - 50) / 20.0                 # -2.5 .. +2.45
+            rows.append({"ym": m, "permno": p, "vol_12m_xs": vol,
+                         "y_raw": 0.01 + 0.02 * max(vol, 0) + rng.normal(0, 1e-6)})
+    panel = pd.DataFrame(rows)
+    # A book that only ever holds the very highest-vol names.
+    holdings = {m: pd.DataFrame({"permno": range(90, 100)}) for m in months}
+
+    out = return_by_vol_decile(panel, holdings=holdings)
+    assert list(out.index) == list(range(1, 11))
+    assert out.loc[10, "ann_return"] > out.loc[1, "ann_return"]
+    np.testing.assert_almost_equal(out["share_of_book"].sum(), 1.0, decimal=6)
+    assert out.loc[10, "share_of_book"] == 1.0
+    assert out["n_obs"].sum() == len(panel)
+
+
+def test_return_by_vol_decile_needs_data():
+    from core.diagnostics import return_by_vol_decile
+    assert return_by_vol_decile(pd.DataFrame({"ym": [], "permno": [],
+                                              "vol_12m_xs": [], "y_raw": []})).empty

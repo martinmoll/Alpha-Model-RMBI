@@ -40,6 +40,10 @@ def dataset_fingerprint(df: pd.DataFrame) -> str:
 
 def prediction_key(model_type, model_params, retrain_every, feature_cols=None, window_type="expanding", auto_tune=False, data_fingerprint=None, oos_start=None, rolling_window=None):
     return _make_key({
+        # Bump when the shape of a stored prediction frame changes. v2 adds
+        # ivol_xs, which portfolio construction needs for the volatility cap;
+        # frames cached before it lack the column.
+        'predictions_version': 2,
         'model_type': model_type,
         'model_params': model_params,
         'retrain_every': retrain_every,
@@ -55,7 +59,7 @@ def prediction_key(model_type, model_params, retrain_every, feature_cols=None, w
     })
 
 
-def portfolio_key(pred_key, K, vol_tilt, regime_lookback, strategy_type="long_only", K_short=10, construction_method="equal_weight", tc_bps=0.0, cost_bps=10.0):
+def portfolio_key(pred_key, K, vol_tilt, regime_lookback, strategy_type="long_only", K_short=10, construction_method="equal_weight", tc_bps=0.0, cost_bps=10.0, max_ivol_xs=None):
     return _make_key({
         # Bump when weight construction changes in a way the other key fields
         # cannot express. v2: ERC/MVO now receive a real point-in-time
@@ -71,6 +75,7 @@ def portfolio_key(pred_key, K, vol_tilt, regime_lookback, strategy_type="long_on
         'construction_method': construction_method,
         'tc_bps': tc_bps,
         'cost_bps': cost_bps,
+        'max_ivol_xs': max_ivol_xs,
     })
 
 
